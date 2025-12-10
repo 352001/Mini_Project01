@@ -186,14 +186,16 @@ if side == 'Client':
         safe_rerun()
 
     def clear_check_fields():
-        for k in ("filter_name", "filter_email", "filter_mobile", "chk_complaint_id"):
-            if k in st.session_state:
-                st.session_state[k] = ""
+        # Only clear complaint id and status for the simplified UI
+        if "chk_complaint_id" in st.session_state:
+            st.session_state["chk_complaint_id"] = ""
+        if "chk_status_choice" in st.session_state:
+            st.session_state["chk_status_choice"] = "all"
 
     # two tabs
     tab_new, tab_check = st.tabs(["New Query", "Check Query Status"])
 
-    # New Query tab
+    # New Query tab (unchanged)
     with tab_new:
         st.header("Raise a New Query")
         st.info("Fill the form below and click **Raise Query**. New complaints are created with status = 'open'.")
@@ -264,47 +266,22 @@ if side == 'Client':
                 if st.button("Done", key=f"done_after_{new_id}"):
                     clear_new_form_and_rerun()
 
-    # Check Query Status tab
+    # Check Query Status tab (SIMPLIFIED)
     with tab_check:
         st.header("Check Query Status")
-        st.info("You are logged in — results will be fetched for your account by default. Use dropdowns to filter by Name/Email/Mobile.")
+        st.info("We assure you that all your queries will be resolved soon.")
 
-        # Build dropdown lists (fetch distinct values)
-        try:
-            mycursor.execute("SELECT DISTINCT name FROM customer_data")
-            name_rows = [r[0] for r in mycursor.fetchall() if r[0] is not None]
-            mycursor.execute("SELECT DISTINCT email FROM customer_data")
-            email_rows = [r[0] for r in mycursor.fetchall() if r[0] is not None]
-            mycursor.execute("SELECT DISTINCT mobile FROM customer_data")
-            mobile_rows = [str(r[0]) for r in mycursor.fetchall() if r[0] is not None]
-        except Exception:
-            # If table doesn't exist or DB error, fallback to empty lists
-            name_rows, email_rows, mobile_rows = [], [], []
-
-        name_list = ["All"] + sorted(set(name_rows))
-        email_list = ["All"] + sorted(set(email_rows))
-        mobile_list = ["All"] + sorted(set(mobile_rows))
-
-        filter_name = st.selectbox("Filter by Name", options=name_list, index=0, key="filter_name")
-        filter_email = st.selectbox("Filter by Email", options=email_list, index=0, key="filter_email")
-        filter_mobile = st.selectbox("Filter by Mobile", options=mobile_list, index=0, key="filter_mobile")
-
+        # Only show status and complaint id filters
+        status_choice = st.selectbox("Filter by status", options=["all", "open", "In Progress", "closed"], index=0, key="chk_status_choice")
         complaint_id_filter = st.text_input("Filter by Complaint ID (optional)", key="chk_complaint_id")
-        status_choice = st.selectbox("Filter by status", options=["all", "open", "In Progress", "closed"], index=0)
 
         if st.button("Check Status", key="check_status_btn"):
-            # Map dropdown selections to None (meaning 'don't filter that column')
-            name_val = None if filter_name == "All" else filter_name
-            email_val = None if filter_email == "All" else filter_email
-            mobile_val = None if filter_mobile == "All" else filter_mobile
-
-            if not (name_val or email_val or mobile_val):
-                # default to logged-in user's email/mobile
-                email_val = st.session_state.get("client_email", "") or None
-                mobile_val = st.session_state.get("client_mobile", "") or None
+            # default to logged-in user's email/mobile
+            email_val = st.session_state.get("client_email", "") or None
+            mobile_val = st.session_state.get("client_mobile", "") or None
 
             try:
-                df_chk = fetch_complaints_lookup(name_val, email_val, mobile_val, status_choice)
+                df_chk = fetch_complaints_lookup(None, email_val, mobile_val, status_choice)
             except Exception as e:
                 st.error(f"Lookup failed: {e}")
                 st.stop()
@@ -316,7 +293,7 @@ if side == 'Client':
                     if "query_id" in df_chk.columns:
                         df_chk = df_chk[df_chk["query_id"] == cid]
                         if df_chk.empty:
-                            st.info(f"No complaints found matching Complaint ID {cid} with the provided filters.")
+                            st.info(f"No complaints found matching Complaint ID {cid} for your account.")
                     else:
                         st.warning("Complaint ID filter not applied: 'query_id' column missing in results.")
                 except ValueError:
@@ -338,7 +315,7 @@ elif side == 'Support':
     st.title("Support Dashboard")
 
     # --- static credentials (demo) ---
-    SUPPORT_USER = "admin"
+    SUPPORT_USER = "Support"
     SUPPORT_PASS = "1234"
 
     st.session_state.setdefault("support_auth", False)
@@ -493,7 +470,7 @@ elif side == 'Support':
                 key=f"support_new_status_radio_{selected_id}"
             )
 
-            # Update / Delete buttons
+            # Update button (delete removed per your request)
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("Update Status", key=f"support_update_btn_{selected_id}"):
@@ -523,14 +500,4 @@ elif side == 'Support':
                         st.error(f"Update failed: {e}")
                     safe_rerun()
             with col2:
-                if st.button("Delete Complaint", key=f"support_delete_btn_{selected_id}"):
-                    try:
-                        cur_del = mydb.cursor()
-                        cur_del.execute("DELETE FROM customer_data WHERE query_id = %s", (int(selected_id),))
-                        mydb.commit()
-                        cur_del.close()
-                        st.success(f"Complaint ID {selected_id} deleted.")
-                        st.session_state["support_selected_id"] = None
-                    except Exception as e:
-                        st.error(f"Delete failed: {e}")
-                    safe_rerun()
+                st.write("")  # placeholder to keep layout consistent
